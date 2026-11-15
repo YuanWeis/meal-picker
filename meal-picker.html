@@ -359,6 +359,35 @@
     margin: 14px 0 8px;
   }
 
+  .cfg-add-btn {
+    display: block;
+    width: 100%;
+    font-family: inherit;
+    font-size: .9rem;
+    font-weight: bold;
+    color: #ffb74d;
+    background: rgba(255, 183, 77, .1);
+    border: 1px dashed rgba(255, 183, 77, .5);
+    border-radius: 10px;
+    padding: 10px 0;
+    margin: 4px 0 16px;
+    cursor: pointer;
+    transition: background .2s, color .2s;
+  }
+  .cfg-add-btn:hover { background: rgba(255, 183, 77, .2); color: #ffd54f; }
+
+  .cfg-delete-btn {
+    font-size: .72rem;
+    color: var(--text-dim);
+    background: rgba(255,255,255,.08);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: color .2s;
+  }
+  .cfg-delete-btn:hover { color: #ff8a80; border-color: rgba(255, 138, 128, .5); }
+
   .cfg-dish {
     border: 1px solid var(--panel-border);
     border-radius: 12px;
@@ -819,52 +848,78 @@ function esc(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/* 创建单个菜品编辑行 */
+function createDishRow(cat, dish) {
+  const row = document.createElement("div");
+  row.className = "cfg-dish";
+  row.dataset.cat = cat;
+  row.innerHTML = `
+    <div class="cfg-img-box">
+      <img class="cfg-preview" src="${dishImg(dish, cat)}" alt="">
+      <button type="button" class="cfg-upload-btn">上传图片</button>
+      <button type="button" class="cfg-delete-btn">删除</button>
+      <input type="file" accept="image/*" hidden>
+    </div>
+    <div class="cfg-fields">
+      <input class="cfg-name" placeholder="菜名" value="${esc(dish.name)}">
+      <textarea class="cfg-img-url" placeholder="图片链接（选填，留空使用默认图）">${esc(dish.img || "")}</textarea>
+      <textarea class="cfg-steps" placeholder="做法步骤，每行一条">${esc(dish.steps.join("\n"))}</textarea>
+    </div>
+  `;
+  // 本地上传：转 dataURL 并实时预览
+  const fileInput = row.querySelector('input[type="file"]');
+  row.querySelector(".cfg-upload-btn").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      row.dataset.localImg = reader.result;   // 存在行数据上，保存时读取
+      row.querySelector(".cfg-preview").src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  // 图片链接输入变化时也更新预览
+  row.querySelector(".cfg-img-url").addEventListener("change", e => {
+    if (e.target.value.trim()) row.querySelector(".cfg-preview").src = e.target.value.trim();
+    else row.querySelector(".cfg-preview").src = DEFAULT_IMGS[cat];
+  });
+  // 删除该行（点保存后才真正生效）
+  row.querySelector(".cfg-delete-btn").addEventListener("click", () => {
+    const name = row.querySelector(".cfg-name").value.trim() || "未命名菜品";
+    if (confirm(`确定删除「${name}」吗？点击"保存配置"后生效。`)) row.remove();
+  });
+  return row;
+}
+
 function openCfg() {
   cfgBody.innerHTML = "";
   [["meat", MEAT_LIST], ["veg", VEG_LIST]].forEach(([cat, list]) => {
+    const section = document.createElement("div");
+    section.className = "cfg-section";
+    section.dataset.cat = cat;
+
     const title = document.createElement("div");
     title.className = "cfg-cat-title";
     title.textContent = CAT_LABEL[cat];
-    cfgBody.appendChild(title);
+    section.appendChild(title);
 
-    list.forEach((dish, idx) => {
-      const row = document.createElement("div");
-      row.className = "cfg-dish";
-      row.dataset.cat = cat;
-      row.dataset.idx = idx;
-      row.innerHTML = `
-        <div class="cfg-img-box">
-          <img class="cfg-preview" src="${dishImg(dish, cat)}" alt="">
-          <button type="button" class="cfg-upload-btn">上传图片</button>
-          <input type="file" accept="image/*" hidden>
-        </div>
-        <div class="cfg-fields">
-          <input class="cfg-name" placeholder="菜名" value="${esc(dish.name)}">
-          <textarea class="cfg-img-url" placeholder="图片链接（选填，留空使用默认图）">${esc(dish.img || "")}</textarea>
-          <textarea class="cfg-steps" placeholder="做法步骤，每行一条">${esc(dish.steps.join("\n"))}</textarea>
-        </div>
-      `;
-      // 本地上传：转 dataURL 并实时预览
-      const fileInput = row.querySelector('input[type="file"]');
-      row.querySelector(".cfg-upload-btn").addEventListener("click", () => fileInput.click());
-      fileInput.addEventListener("change", () => {
-        const file = fileInput.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          row.dataset.localImg = reader.result;   // 存在行数据上，保存时读取
-          row.querySelector(".cfg-preview").src = reader.result;
-        };
-        reader.readAsDataURL(file);
-      });
-      // 图片链接输入变化时也更新预览
-      row.querySelector(".cfg-img-url").addEventListener("change", e => {
-        if (e.target.value.trim()) row.querySelector(".cfg-preview").src = e.target.value.trim();
-        else row.querySelector(".cfg-preview").src = DEFAULT_IMGS[cat];
-      });
+    list.forEach(dish => section.appendChild(createDishRow(cat, dish)));
 
-      cfgBody.appendChild(row);
+    // 添加新菜品按钮
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "cfg-add-btn";
+    addBtn.textContent = `➕ 添加${cat === "meat" ? "荤菜" : "素菜"}`;
+    addBtn.addEventListener("click", () => {
+      const newRow = createDishRow(cat, { name: "", img: "", steps: [""] });
+      section.insertBefore(newRow, addBtn);
+      newRow.scrollIntoView({ behavior: "smooth", block: "center" });
+      newRow.querySelector(".cfg-name").focus();
     });
+    section.appendChild(addBtn);
+
+    cfgBody.appendChild(section);
   });
   cfgModal.classList.add("show");
 }
